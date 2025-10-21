@@ -4,6 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Distance Tracker</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-o9N1jvU1kGkGz5mZzFv0Zz2gZ8ZkZz2gZ8ZkZz2gZ8Zk="
+    crossorigin=""
+  />
   <style>
     body {
       margin: 0;
@@ -22,27 +28,17 @@
       padding: 20px;
       border-radius: 10px;
       text-align: center;
-      width: 300px;
+      width: 90%;
+      max-width: 400px;
     }
     h1 {
       margin-bottom: 10px;
     }
     #map {
       width: 100%;
-      height: 200px;
-      background-color: #eee;
+      height: 250px;
       margin-bottom: 10px;
-      position: relative;
-    }
-    .pin {
-      width: 24px;
-      height: 24px;
-      background: red;
-      border-radius: 50%;
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
+      border-radius: 8px;
     }
     button {
       margin: 5px;
@@ -65,9 +61,7 @@
 <body>
   <div class="container">
     <h1>Distance Tracker</h1>
-    <div id="map">
-      <div class="pin"></div>
-    </div>
+    <div id="map"></div>
     <button onclick="startTracking()">Start</button>
     <button onclick="stopTracking()">Stop</button>
     <button onclick="convertUnits()">Convert</button>
@@ -76,19 +70,35 @@
     <footer>Copyright ©2025 Nandu Software Services</footer>
   </div>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
+    let map, marker;
     let watchId;
     let totalDistance = 0;
     let lastPosition = null;
     let inMiles = false;
+    const MIN_MOVEMENT = 5; // meters
+
+    function initMap(lat, lon) {
+      map = L.map('map').setView([lat, lon], 16);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+      }).addTo(map);
+      marker = L.marker([lat, lon]).addTo(map);
+    }
 
     function startTracking() {
       if (navigator.geolocation) {
-        watchId = navigator.geolocation.watchPosition(updateDistance, handleError, {
-          enableHighAccuracy: true,
-          maximumAge: 0,
-          timeout: 5000
-        });
+        navigator.geolocation.getCurrentPosition((pos) => {
+          const { latitude, longitude } = pos.coords;
+          initMap(latitude, longitude);
+          lastPosition = { latitude, longitude };
+          watchId = navigator.geolocation.watchPosition(updateDistance, handleError, {
+            enableHighAccuracy: true,
+            maximumAge: 0,
+            timeout: 5000
+          });
+        }, handleError);
       } else {
         alert("Geolocation is not supported by this browser.");
       }
@@ -103,6 +113,8 @@
 
     function updateDistance(position) {
       const { latitude, longitude } = position.coords;
+      const newPos = { latitude, longitude };
+
       if (lastPosition) {
         const dist = getDistanceFromLatLonInMeters(
           lastPosition.latitude,
@@ -110,14 +122,22 @@
           latitude,
           longitude
         );
-        totalDistance += dist;
+        if (dist >= MIN_MOVEMENT) {
+          totalDistance += dist;
+          lastPosition = newPos;
+          marker.setLatLng([latitude, longitude]);
+          map.setView([latitude, longitude]);
+        }
+      } else {
+        lastPosition = newPos;
       }
-      lastPosition = { latitude, longitude };
       displayDistance();
     }
 
     function displayDistance() {
-      const value = inMiles ? (totalDistance / 1609.34).toFixed(2) + " miles" : totalDistance.toFixed(2) + " meters";
+      const value = inMiles
+        ? (totalDistance / 1609.34).toFixed(2) + " miles"
+        : totalDistance.toFixed(2) + " meters";
       document.getElementById("distance").textContent = "Distance: " + value;
     }
 
@@ -131,6 +151,7 @@
       totalDistance = 0;
       lastPosition = null;
       displayDistance();
+      if (map) map.remove();
     }
 
     function handleError(error) {
@@ -138,7 +159,7 @@
     }
 
     function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
-      const R = 6371000; // Radius of Earth in meters
+      const R = 6371000;
       const dLat = toRad(lat2 - lat1);
       const dLon = toRad(lon2 - lon1);
       const a =
