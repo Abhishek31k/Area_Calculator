@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Distance Tracker</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Georgia', serif;
+      background: url('https://i.imgur.com/9zQZ5ZP.jpg') no-repeat center center fixed;
+      background-size: cover;
+      color: #333;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+    .container {
+      background-color: rgba(255, 255, 255, 0.85);
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      width: 300px;
+    }
+    h1 {
+      margin-bottom: 10px;
+    }
+    #map {
+      width: 100%;
+      height: 200px;
+      background-color: #eee;
+      margin-bottom: 10px;
+      position: relative;
+    }
+    .pin {
+      width: 24px;
+      height: 24px;
+      background: red;
+      border-radius: 50%;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+    button {
+      margin: 5px;
+      padding: 10px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #distance {
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    footer {
+      margin-top: 20px;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Distance Tracker</h1>
+    <div id="map">
+      <div class="pin"></div>
+    </div>
+    <button onclick="startTracking()">Start</button>
+    <button onclick="stopTracking()">Stop</button>
+    <button onclick="convertUnits()">Convert</button>
+    <button onclick="exitApp()">Exit</button>
+    <div id="distance">Distance: 0 meters</div>
+    <footer>Copyright ©2025 Nandu Software Services</footer>
+  </div>
+
+  <script>
+    let watchId;
+    let totalDistance = 0;
+    let lastPosition = null;
+    let inMiles = false;
+
+    function startTracking() {
+      if (navigator.geolocation) {
+        watchId = navigator.geolocation.watchPosition(updateDistance, handleError, {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 5000
+        });
+      } else {
+        alert("Geolocation is not supported by this browser.");
+      }
+    }
+
+    function stopTracking() {
+      if (watchId) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+    }
+
+    function updateDistance(position) {
+      const { latitude, longitude } = position.coords;
+      if (lastPosition) {
+        const dist = getDistanceFromLatLonInMeters(
+          lastPosition.latitude,
+          lastPosition.longitude,
+          latitude,
+          longitude
+        );
+        totalDistance += dist;
+      }
+      lastPosition = { latitude, longitude };
+      displayDistance();
+    }
+
+    function displayDistance() {
+      const value = inMiles ? (totalDistance / 1609.34).toFixed(2) + " miles" : totalDistance.toFixed(2) + " meters";
+      document.getElementById("distance").textContent = "Distance: " + value;
+    }
+
+    function convertUnits() {
+      inMiles = !inMiles;
+      displayDistance();
+    }
+
+    function exitApp() {
+      stopTracking();
+      totalDistance = 0;
+      lastPosition = null;
+      displayDistance();
+    }
+
+    function handleError(error) {
+      alert("Error: " + error.message);
+    }
+
+    function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
+      const R = 6371000; // Radius of Earth in meters
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    function toRad(deg) {
+      return deg * (Math.PI / 180);
+    }
+  </script>
+</body>
+</html>
