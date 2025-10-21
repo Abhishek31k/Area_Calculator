@@ -2,176 +2,177 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <title>Area Calculator & Distance Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Distance Tracker</title>
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    integrity="sha256-o9N1jvU1kGkGz5mZzFv0Zz2gZ8ZkZz2gZ8ZkZz2gZ8Zk="
-    crossorigin=""
-  />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     body {
       margin: 0;
-      font-family: 'Georgia', serif;
-      background: url('https://i.imgur.com/9zQZ5ZP.jpg') no-repeat center center fixed;
-      background-size: cover;
-      color: #333;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
+      font-family: Georgia, serif;
+      background: #f4f1e9;
     }
-    .container {
-      background-color: rgba(255, 255, 255, 0.85);
-      padding: 20px;
-      border-radius: 10px;
+    #startScreen {
       text-align: center;
-      width: 90%;
-      max-width: 400px;
+      padding: 50px 20px;
     }
     h1 {
-      margin-bottom: 10px;
+      color: #4b5320;
+      font-size: 2em;
     }
-    #map {
-      width: 100%;
-      height: 250px;
-      margin-bottom: 10px;
-      border-radius: 8px;
+    label, select, button {
+      font-size: 1em;
+      margin: 10px;
+      padding: 10px;
+      font-family: Georgia, serif;
     }
     button {
-      margin: 5px;
-      padding: 10px 20px;
-      font-size: 16px;
+      background-color: #6b8e23;
+      color: white;
       border: none;
       border-radius: 5px;
       cursor: pointer;
     }
-    #distance {
-      margin-top: 10px;
-      font-weight: bold;
+    #mapScreen {
+      display: none;
+    }
+    #map {
+      height: 100vh;
+      width: 100%;
+    }
+    #controls {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
+      padding: 10px;
+      border-radius: 8px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+      z-index: 1000;
+    }
+    select {
+      margin-top: 5px;
+      padding: 5px;
     }
     footer {
+      font-size: 0.8em;
+      color: #555;
       margin-top: 20px;
-      font-size: 12px;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Distance Tracker</h1>
+
+  <!-- Start Screen -->
+  <div id="startScreen">
+    <h1>Area Calculator</h1>
+    <p>Measure land easily in acres, hectares, and more</p>
+    <label for="units">Units:</label>
+    <select id="units">
+      <option value="meters">Meters</option>
+      <option value="kilometers">Kilometers</option>
+      <option value="feet">Feet</option>
+    </select>
+    <br>
+    <button onclick="launchTracker()">Start</button>
+    <footer>
+      Copyright ©2013 iConcept Software Services Pvt. Ltd. All Rights Reserved.
+    </footer>
+  </div>
+
+  <!-- Map Tracker Screen -->
+  <div id="mapScreen">
+    <div id="controls">
+      <button onclick="stopTracking()">Stop</button>
+      <button onclick="exitMap()">Exit</button>
+      <p>Total Distance: <span id="distance">0</span> <span id="unit">meters</span></p>
+      <label for="unitSelector">Units:</label>
+      <select id="unitSelector" onchange="updateDisplayUnit()">
+        <option value="meters">Meters</option>
+        <option value="kilometers">Kilometers</option>
+        <option value="feet">Feet</option>
+      </select>
+    </div>
     <div id="map"></div>
-    <button onclick="startTracking()">Start</button>
-    <button onclick="stopTracking()">Stop</button>
-    <button onclick="convertUnits()">Convert</button>
-    <button onclick="exitApp()">Exit</button>
-    <div id="distance">Distance: 0 meters</div>
-    <footer>Copyright ©2025 Nandu Software Services</footer>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    let map, marker;
-    let watchId;
-    let totalDistance = 0;
-    let lastPosition = null;
-    let inMiles = false;
-    const MIN_MOVEMENT = 5; // meters
+    let map, path = [], polyline, totalDistance = 0, watchId;
+    let currentUnit = 'meters';
 
-    function initMap(lat, lon) {
-      map = L.map('map').setView([lat, lon], 16);
+    function launchTracker() {
+      currentUnit = document.getElementById('units').value;
+      document.getElementById('startScreen').style.display = 'none';
+      document.getElementById('mapScreen').style.display = 'block';
+      document.getElementById('unitSelector').value = currentUnit;
+      initMap();
+      startTracking();
+    }
+
+    function initMap() {
+      map = L.map('map').setView([0, 0], 15);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
       }).addTo(map);
-      marker = L.marker([lat, lon]).addTo(map);
+      polyline = L.polyline([], { color: 'blue' }).addTo(map);
     }
 
     function startTracking() {
       if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition((pos) => {
-          const { latitude, longitude } = pos.coords;
-          initMap(latitude, longitude);
-          lastPosition = { latitude, longitude };
-          watchId = navigator.geolocation.watchPosition(updateDistance, handleError, {
-            enableHighAccuracy: true,
-            maximumAge: 0,
-            timeout: 5000
-          });
-        }, handleError);
+        watchId = navigator.geolocation.watchPosition(
+          position => {
+            const latlng = [position.coords.latitude, position.coords.longitude];
+            L.marker(latlng).addTo(map);
+            map.setView(latlng, 18);
+
+            if (path.length > 0) {
+              const last = path[path.length - 1];
+              const dist = map.distance(last, latlng);
+              totalDistance += dist;
+              updateDistanceDisplay();
+            }
+
+            path.push(latlng);
+            polyline.setLatLngs(path);
+          },
+          error => alert('Location error: ' + error.message),
+          { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
+        );
       } else {
-        alert("Geolocation is not supported by this browser.");
+        alert('Geolocation is not supported by your browser.');
       }
+    }
+
+    function updateDistanceDisplay() {
+      let converted = totalDistance;
+      if (currentUnit === 'kilometers') {
+        converted = totalDistance / 1000;
+      } else if (currentUnit === 'feet') {
+        converted = totalDistance * 3.28084;
+      }
+      document.getElementById('distance').textContent = converted.toFixed(2);
+      document.getElementById('unit').textContent = currentUnit;
+    }
+
+    function updateDisplayUnit() {
+      currentUnit = document.getElementById('unitSelector').value;
+      updateDistanceDisplay();
     }
 
     function stopTracking() {
       if (watchId) {
         navigator.geolocation.clearWatch(watchId);
-        watchId = null;
+        alert('Tracking stopped.');
       }
     }
 
-    function updateDistance(position) {
-      const { latitude, longitude } = position.coords;
-      const newPos = { latitude, longitude };
-
-      if (lastPosition) {
-        const dist = getDistanceFromLatLonInMeters(
-          lastPosition.latitude,
-          lastPosition.longitude,
-          latitude,
-          longitude
-        );
-        if (dist >= MIN_MOVEMENT) {
-          totalDistance += dist;
-          lastPosition = newPos;
-          marker.setLatLng([latitude, longitude]);
-          map.setView([latitude, longitude]);
-        }
-      } else {
-        lastPosition = newPos;
-      }
-      displayDistance();
-    }
-
-    function displayDistance() {
-      const value = inMiles
-        ? (totalDistance / 1609.34).toFixed(2) + " miles"
-        : totalDistance.toFixed(2) + " meters";
-      document.getElementById("distance").textContent = "Distance: " + value;
-    }
-
-    function convertUnits() {
-      inMiles = !inMiles;
-      displayDistance();
-    }
-
-    function exitApp() {
+    function exitMap() {
       stopTracking();
+      document.getElementById('mapScreen').style.display = 'none';
+      document.getElementById('startScreen').style.display = 'block';
       totalDistance = 0;
-      lastPosition = null;
-      displayDistance();
-      if (map) map.remove();
-    }
-
-    function handleError(error) {
-      alert("Error: " + error.message);
-    }
-
-    function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
-      const R = 6371000;
-      const dLat = toRad(lat2 - lat1);
-      const dLon = toRad(lon2 - lon1);
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-        Math.sin(dLon / 2) * Math.sin(dLon / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      return R * c;
-    }
-
-    function toRad(deg) {
-      return deg * (Math.PI / 180);
+      path = [];
+      document.getElementById('distance').textContent = '0';
     }
   </script>
 </body>
