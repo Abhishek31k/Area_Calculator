@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Live Distance Tracker</title>
+  <title>Land Area Calculator with GPS Tracking</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
@@ -34,6 +34,7 @@
     }
     #mapScreen {
       display: none;
+      position: relative;
     }
     #map {
       height: 100vh;
@@ -64,15 +65,17 @@
 
   <!-- Start Screen -->
   <div id="startScreen">
-    <h1>Distance Tracker</h1>
-    <p>Track your movement and measure distance in real time</p>
+    <h1>Area Calculator</h1>
+    <p>Track your movement to calculate land area</p>
     <label for="units">Units:</label>
     <select id="units">
-      <option value="meters">Meters</option>
-      <option value="kilometers">Kilometers</option>
-      <option value="feet">Feet</option>
+      <option value="sqm">Square Meters</option>
+      <option value="hectare">Hectares</option>
+      <option value="acre">Acres</option>
+      <option value="sqft">Square Feet</option>
+      <option value="sqkm">Square Kilometers</option>
     </select>
-    <br>
+    <br />
     <button onclick="launchMap()">Start</button>
     <footer>
       Copyright ©2013 iConcept Software Services Pvt. Ltd. All Rights Reserved.
@@ -82,23 +85,28 @@
   <!-- Map Screen -->
   <div id="mapScreen">
     <div id="controls">
-      <button onclick="stopTracking()">Stop</button>
+      <button onclick="clearMap()">Clear</button>
       <button onclick="exitMap()">Exit</button>
-      <p>Distance: <span id="distance">0</span> <span id="unitLabel">meters</span></p>
+      <button onclick="startTracking()">Start Tracking</button>
+      <button onclick="stopTracking()">Stop Tracking</button>
+      <p>Area: <span id="area">0</span> <span id="unitLabel">sqm</span></p>
       <label for="unitSelector">Units:</label>
       <select id="unitSelector" onchange="updateUnit()">
-        <option value="meters">Meters</option>
-        <option value="kilometers">Kilometers</option>
-        <option value="feet">Feet</option>
+        <option value="sqm">Square Meters</option>
+        <option value="hectare">Hectares</option>
+        <option value="acre">Acres</option>
+        <option value="sqft">Square Feet</option>
+        <option value="sqkm">Square Kilometers</option>
       </select>
     </div>
     <div id="map"></div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-geodesy"></script>
   <script>
-    let map, path = [], polyline, totalDistance = 0, watchId;
-    let currentUnit = 'meters';
+    let map, polygon, markers = [], latlngs = [], currentUnit = 'sqm';
+    let watchId;
 
     function launchMap() {
       currentUnit = document.getElementById('units').value;
@@ -107,74 +115,112 @@
       document.getElementById('unitSelector').value = currentUnit;
       document.getElementById('unitLabel').textContent = currentUnit;
       initMap();
-      startTracking();
     }
 
     function initMap() {
-      map = L.map('map').setView([0, 0], 15);
+      map = L.map('map').setView([16.7, 81.1], 15); // Initial view (Denduluru area)
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
       }).addTo(map);
-      polyline = L.polyline([], { color: 'blue' }).addTo(map);
     }
 
-    function startTracking() {
-      if (navigator.geolocation) {
-        watchId = navigator.geolocation.watchPosition(
-          position => {
-            const latlng = [position.coords.latitude, position.coords.longitude];
-            L.marker(latlng).addTo(map);
-            map.setView(latlng, 18);
-
-            if (path.length > 0) {
-              const last = path[path.length - 1];
-              const dist = map.distance(last, latlng);
-              totalDistance += dist;
-              updateDistanceDisplay();
-            }
-
-            path.push(latlng);
-            polyline.setLatLngs(path);
-          },
-          error => alert('Location error: ' + error.message),
-          { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
-        );
-      } else {
-        alert('Geolocation is not supported by your browser.');
+    function updateArea() {
+      if (latlngs.length < 3) {
+        document.getElementById('area').textContent = '0';
+        return;
       }
-    }
 
-    function updateDistanceDisplay() {
-      let converted = totalDistance;
-      if (currentUnit === 'kilometers') {
-        converted = totalDistance / 1000;
-      } else if (currentUnit === 'feet') {
-        converted = totalDistance * 3.28084;
+      const areaSqMeters = L.GeometryUtil.geodesicArea(latlngs);
+      let converted = areaSqMeters;
+      switch (currentUnit) {
+        case 'hectare':
+          converted = areaSqMeters / 10000;
+          break;
+        case 'acre':
+          converted = areaSqMeters / 4046.86;
+          break;
+        case 'sqft':
+          converted = areaSqMeters * 10.7639;
+          break;
+        case 'sqkm':
+          converted = areaSqMeters / 1e6;
+          break;
       }
-      document.getElementById('distance').textContent = converted.toFixed(2);
+      document.getElementById('area').textContent = converted.toFixed(2);
       document.getElementById('unitLabel').textContent = currentUnit;
     }
 
     function updateUnit() {
       currentUnit = document.getElementById('unitSelector').value;
-      updateDistanceDisplay();
+      updateArea();
     }
 
-    function stopTracking() {
-      if (watchId) {
-        navigator.geolocation.clearWatch(watchId);
-        alert('Tracking stopped.');
-      }
+    function clearMap() {
+      latlngs = [];
+      markers.forEach(m => map.removeLayer(m));
+      markers = [];
+      if (polygon) map.removeLayer(polygon);
+      document.getElementById('area').textContent = '0';
     }
 
     function exitMap() {
       stopTracking();
+      clearMap();
       document.getElementById('mapScreen').style.display = 'none';
       document.getElementById('startScreen').style.display = 'block';
-      totalDistance = 0;
-      path = [];
-      document.getElementById('distance').textContent = '0';
+    }
+
+    function startTracking() {
+      if (!navigator.geolocation) {
+        alert("Geolocation is not supported by your browser");
+        return;
+      }
+      if (watchId !== undefined) {
+        alert("Tracking already started");
+        return;
+      }
+
+      watchId = navigator.geolocation.watchPosition(position => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        const latlng = L.latLng(lat, lng);
+
+        // Add marker and point
+        const marker = L.circleMarker(latlng, {
+          radius: 6,
+          fillColor: '#6b8e23',
+          color: '#4b5320',
+          weight: 1,
+          opacity: 1,
+          fillOpacity: 0.8
+        }).addTo(map);
+        markers.push(marker);
+        latlngs.push(latlng);
+
+        if (polygon) map.removeLayer(polygon);
+        polygon = L.polygon(latlngs, { color: 'blue' }).addTo(map);
+
+        updateArea();
+
+        // Center map on current location
+        map.panTo(latlng);
+      }, error => {
+        console.error("Error getting location:", error);
+        alert("Error getting location: " + error.message);
+      }, {
+        enableHighAccuracy: true,
+        maximumAge: 1000,
+        timeout: 5000,
+      });
+    }
+
+    function stopTracking() {
+      if (watchId !== undefined) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = undefined;
+      }
     }
   </script>
+
 </body>
 </html>
